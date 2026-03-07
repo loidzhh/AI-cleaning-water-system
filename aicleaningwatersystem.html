@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Су Тазарту Жүйесі</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @keyframes flow {
+            0% { transform: translateY(-100%); opacity: 0.3; }
+            50% { opacity: 0.8; }
+            100% { transform: translateY(100%); opacity: 0.3; }
+        }
+        .water-particle {
+            animation: flow 2s linear infinite;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        body {
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+            color: #f1f5f9;
+            font-family: 'Inter', sans-serif;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [name]);
+            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+        };
+
+        function App() {
+            const [metrics, setMetrics] = useState({
+                ph: 7.2,
+                turbidity: 0.5,
+                conductivity: 450,
+                alphaBeta: 0.05
+            });
+            const [activeStage, setActiveStage] = useState(1);
+            const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'chat'
+            const [aiReport, setAiReport] = useState("");
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+            
+            // Chat state
+            const [chatMessages, setChatMessages] = useState([]);
+            const [userInput, setUserInput] = useState("");
+            const [isChatLoading, setIsChatLoading] = useState(false);
+
+            const apiKey = ""; // API Key 
+
+            // Деректерді имитациялау
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setMetrics(prev => ({
+                        ph: +(7.2 + (Math.random() * 0.4 - 0.2)).toFixed(2),
+                        turbidity: +(0.5 + (Math.random() * 0.2 - 0.1)).toFixed(2),
+                        conductivity: Math.round(450 + (Math.random() * 20 - 10)),
+                        alphaBeta: +(0.05 + (Math.random() * 0.015 - 0.007)).toFixed(3)
+                    }));
+                }, 3000);
+                
+                const stageInterval = setInterval(() => {
+                    setActiveStage(prev => (prev >= 5 ? 1 : prev + 1));
+                }, 4000);
+
+                return () => {
+                    clearInterval(interval);
+                    clearInterval(stageInterval);
+                };
+            }, []);
+
+            // Жалпы сараптама (Gemini)
+            const runAIAnalysis = async () => {
+                setIsAnalyzing(true);
+                const prompt = `Сен су сапасы бойынша AI сарапшысысың. Мына көрсеткіштерді талда: pH: ${metrics.ph}, Лайлылық: ${metrics.turbidity} NTU, Радиация: ${metrics.alphaBeta} Bq/L. Осы деректерге сүйеніп, қазіргі тазарту тиімділігі туралы қазақ тілінде 3 қысқа сөйлем жаз. Егер радиация 0.06-дан асса, ескерту жаса.`;
+
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const data = await response.json();
+                    setAiReport(data.candidates?.[0]?.content?.parts?.[0]?.text || "AI қорытынды жасай алмады.");
+                } catch (err) {
+                    setAiReport("Байланыс қатесі. Көрсеткіштер қалыпты деңгейде.");
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            };
+
+            // AI Ассистентпен чат (Gemini)
+            const handleSendMessage = async (e) => {
+                e.preventDefault();
+                if (!userInput.trim()) return;
+
+                const newMessages = [...chatMessages, { role: 'user', text: userInput }];
+                setChatMessages(newMessages);
+                setUserInput("");
+                setIsChatLoading(true);
+
+                const prompt = `Жүйе контексті: pH ${metrics.ph}, Лайлылық ${metrics.turbidity}, Радиация ${metrics.alphaBeta}. 
+                Пайдаланушы сұрағы: ${userInput}. 
+                Сен су тазарту зауытының инженерісің. Сұраққа техникалық тұрғыдан нақты, кәсіби және қазақ тілінде жауап бер.`;
+
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const data = await response.json();
+                    const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Жауап алу мүмкін болмады.";
+                    setChatMessages([...newMessages, { role: 'ai', text: aiResponse }]);
+                } catch (err) {
+                    setChatMessages([...newMessages, { role: 'ai', text: "Қазіргі уақытта байланыс үзілді. Жүйе көрсеткіштері тұрақты." }]);
+                } finally {
+                    setIsChatLoading(false);
+                }
+            };
+
+            const stages = [
+                { id: 1, name: 'Механикалық сүзгі', color: '#78350f', desc: 'Ірі қоқыс пен құмды жою', icon: 'layers' },
+                { id: 2, name: 'Көмірлі сорбция', color: '#451a03', desc: 'Хлор мен иістерді сіңіру', icon: 'target' },
+                { id: 3, name: 'Ион алмасу', color: '#0ea5e9', desc: 'Ауыр металдарды алмастыру', icon: 'refresh-cw' },
+                { id: 4, name: 'Кері осмос', color: '#22d3ee', desc: 'Мембраналық ультра-тазарту', icon: 'droplet' },
+                { id: 5, name: 'Радиациялық бақылау', color: '#10b981', desc: 'AI-автоматты қорғаныс', icon: 'shield-check' }
+            ];
+
+            return (
+                <div className="min-h-screen p-4 md:p-8">
+                    <div className="max-w-6xl mx-auto space-y-8">
+                        
+                        {/* Header */}
+                        <header className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-800/50 p-6 rounded-3xl border border-slate-700">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-cyan-500/20 rounded-2xl">
+                                    <Icon name="waves" size={32} className="text-cyan-400" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black tracking-tight text-white uppercase">AquaProtect AI</h1>
+                                    <p className="text-cyan-400 text-sm font-medium">Интеллектуалды су тазарту кешені</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 bg-slate-900/50 px-4 py-2 rounded-full border border-slate-700">
+                                <span className="flex h-3 w-3 relative">
+                                    <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                </span>
+                                <span className="text-xs font-bold text-emerald-400 tracking-wider">ЖҮЙЕ БЕЛСЕНДІ</span>
+                            </div>
+                        </header>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            
+                            {/* Visual Flow Column */}
+                            <div className="lg:col-span-5 space-y-4">
+                                <h2 className="text-lg font-bold flex items-center gap-2 px-2">
+                                    <Icon name="settings-2" size={20} className="text-blue-400" />
+                                    Тазарту схемасы
+                                </h2>
+                                
+                                <div className="relative space-y-4 flex flex-col items-center py-4">
+                                    {/* Intake */}
+                                    <div className="text-center mb-2">
+                                        <div className="w-12 h-12 bg-yellow-900/40 rounded-full flex items-center justify-center border-2 border-yellow-700/50 mb-1">
+                                            <Icon name="droplets" size={24} className="text-yellow-600 animate-bounce" />
+                                        </div>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Шикі су</span>
+                                    </div>
+
+                                    {stages.map((stage) => (
+                                        <React.Fragment key={stage.id}>
+                                            {/* Water Pipe */}
+                                            <div className="relative w-6 h-10 bg-slate-800 overflow-hidden rounded-sm">
+                                                <div 
+                                                    className="absolute inset-0 transition-colors duration-1000"
+                                                    style={{ backgroundColor: stage.color, opacity: 0.4 }}
+                                                ></div>
+                                                <div className="water-particle absolute inset-x-0 top-0 h-4 bg-white/20 blur-sm"></div>
+                                            </div>
+
+                                            {/* Stage Block */}
+                                            <div className={`w-full max-w-sm p-4 rounded-2xl border transition-all duration-700 flex items-center gap-4 ${
+                                                activeStage === stage.id 
+                                                ? 'bg-blue-600/20 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.3)] scale-105' 
+                                                : 'bg-slate-800/40 border-slate-700 opacity-50'
+                                            }`}>
+                                                <div className={`p-3 rounded-xl ${activeStage === stage.id ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                                                    <Icon name={stage.icon} size={24} />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-black text-blue-400/70">0{stage.id}</span>
+                                                        <h3 className="font-bold text-slate-200 text-sm">{stage.name}</h3>
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-400 leading-tight mt-1">{stage.desc}</p>
+                                                </div>
+                                                {activeStage === stage.id && (
+                                                    <div className="animate-pulse">
+                                                        <Icon name="activity" size={18} className="text-emerald-400" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </React.Fragment>
+                                    ))}
+
+                                    {/* Outlet */}
+                                    <div className="text-center mt-2">
+                                        <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center border-2 border-blue-400/50 shadow-[0_0_15px_rgba(96,165,250,0.5)]">
+                                            <Icon name="glass-water" size={32} className="text-blue-400" />
+                                        </div>
+                                        <span className="text-xs font-black text-blue-400 uppercase mt-2 block tracking-widest">Таза су</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Monitoring Column */}
+                            <div className="lg:col-span-7 space-y-6">
+                                
+                                {/* Metrics Grid */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="glass-panel p-5 rounded-3xl border-emerald-500/10">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Радиациялық фон</span>
+                                            <Icon name="radio" size={16} className="text-emerald-400" />
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-black text-emerald-400 font-mono tracking-tighter">{metrics.alphaBeta}</span>
+                                            <span className="text-xs text-slate-500 font-medium">Bq/L</span>
+                                        </div>
+                                        <div className="mt-3 h-1.5 w-full bg-slate-700 rounded-full overflow-hidden">
+                                            <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${Math.min(metrics.alphaBeta * 1000, 100)}%` }}></div>
+                                        </div>
+                                    </div>
+
+                                    <div className="glass-panel p-5 rounded-3xl border-blue-500/10">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">pH Теңгерімі</span>
+                                            <Icon name="thermometer" size={16} className="text-blue-400" />
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-black text-blue-400 font-mono tracking-tighter">{metrics.ph}</span>
+                                            <span className="text-xs text-slate-500 font-medium">pH</span>
+                                        </div>
+                                        <div className="mt-3 h-1.5 w-full bg-slate-700 rounded-full overflow-hidden">
+                                            <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${(metrics.ph / 14) * 100}%` }}></div>
+                                        </div>
+                                    </div>
+
+                                    <div className="glass-panel p-5 rounded-3xl">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Лайлылық деңгейі</span>
+                                            <Icon name="eye-off" size={16} className="text-cyan-400" />
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-black text-cyan-400 font-mono tracking-tighter">{metrics.turbidity}</span>
+                                            <span className="text-xs text-slate-500 font-medium">NTU</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="glass-panel p-5 rounded-3xl">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Өткізгіштік</span>
+                                            <Icon name="zap" size={16} className="text-indigo-400" />
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-black text-indigo-400 font-mono tracking-tighter">{metrics.conductivity}</span>
+                                            <span className="text-xs text-slate-500 font-medium">µS/cm</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* AI Intelligent Hub */}
+                                <div className="bg-slate-800/80 rounded-3xl border border-fuchsia-500/30 p-1 overflow-hidden shadow-[0_0_30px_rgba(217,70,239,0.05)]">
+                                    <div className="flex border-b border-slate-700">
+                                        <button 
+                                            onClick={() => setActiveTab('summary')}
+                                            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'summary' ? 'text-fuchsia-400 bg-fuchsia-500/10' : 'text-slate-500 hover:text-slate-300'}`}
+                                        >
+                                            <Icon name="file-text" size={14} /> Сараптама
+                                        </button>
+                                        <button 
+                                            onClick={() => setActiveTab('chat')}
+                                            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${activeTab === 'chat' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-500 hover:text-slate-300'}`}
+                                        >
+                                            <Icon name="message-square" size={14} /> ✨ Ассистент
+                                        </button>
+                                    </div>
+
+                                    <div className="p-5">
+                                        {activeTab === 'summary' ? (
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2 text-fuchsia-400">
+                                                        <Icon name="sparkles" size={18} />
+                                                        <span className="text-xs font-bold uppercase tracking-tight">Интеллектуалды талдау</span>
+                                                    </div>
+                                                    <button 
+                                                        onClick={runAIAnalysis}
+                                                        disabled={isAnalyzing}
+                                                        className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl text-[10px] font-black uppercase transition-all disabled:opacity-50"
+                                                    >
+                                                        {isAnalyzing ? "Талдау..." : "✨ Жаңарту"}
+                                                    </button>
+                                                </div>
+                                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 min-h-[100px]">
+                                                    {aiReport ? (
+                                                        <p className="text-slate-300 text-sm leading-relaxed">{aiReport}</p>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center justify-center h-full text-slate-600 py-4">
+                                                            <Icon name="cpu" size={24} className="mb-2" />
+                                                            <p className="text-[10px] font-bold uppercase">Талдау жүргізілмеді</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col h-[300px]">
+                                                <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2 custom-scrollbar">
+                                                    {chatMessages.length === 0 && (
+                                                        <div className="h-full flex flex-col items-center justify-center text-slate-600 opacity-50">
+                                                            <Icon name="bot" size={32} className="mb-2" />
+                                                            <p className="text-[10px] font-bold uppercase">Инженер-ассистент байланыста</p>
+                                                        </div>
+                                                    )}
+                                                    {chatMessages.map((msg, i) => (
+                                                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                            <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm ${
+                                                                msg.role === 'user' 
+                                                                ? 'bg-blue-600 text-white rounded-tr-none' 
+                                                                : 'bg-slate-700/50 text-slate-200 border border-slate-600 rounded-tl-none'
+                                                            }`}>
+                                                                {msg.text}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {isChatLoading && (
+                                                        <div className="flex justify-start">
+                                                            <div className="bg-slate-700/50 p-3 rounded-2xl rounded-tl-none border border-slate-600">
+                                                                <div className="flex gap-1">
+                                                                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></div>
+                                                                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-.3s]"></div>
+                                                                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-.5s]"></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <form onSubmit={handleSendMessage} className="flex gap-2">
+                                                    <input 
+                                                        type="text"
+                                                        value={userInput}
+                                                        onChange={(e) => setUserInput(e.target.value)}
+                                                        placeholder="Инженерден сұраңыз..."
+                                                        className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 transition-all"
+                                                    />
+                                                    <button 
+                                                        type="submit"
+                                                        disabled={isChatLoading || !userInput.trim()}
+                                                        className="p-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white rounded-xl transition-all"
+                                                    >
+                                                        <Icon name="send" size={18} />
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Auto-Control Status */}
+                                <div className="bg-emerald-500/5 border border-emerald-500/20 p-5 rounded-3xl flex items-start gap-4 shadow-inner">
+                                    <div className="bg-emerald-500/20 p-3 rounded-2xl shrink-0">
+                                        <Icon name="cpu" size={24} className="text-emerald-400" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-black text-emerald-400 uppercase mb-1 flex items-center gap-2">
+                                            Автоматты бақылау жүйесі
+                                            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                                        </h4>
+                                        <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
+                                            5-кезең белсенді. Радиация деңгейі {metrics.alphaBeta} Bq/L. 
+                                            Егер көрсеткіш 0.1 шегінен асса, ✨ AI алгоритмі Кері Осмос қысымын 1.2 атмосфераға арттырып, су ағынын екінші циклге бағыттайды.
+                                        </p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
